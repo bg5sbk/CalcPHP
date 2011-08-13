@@ -52,10 +52,19 @@ class CalcLexer
             case '/': $this->curr_tok = CalcToken::DIV; $this->curr_pos += 1; return;
             case '(': $this->curr_tok = CalcToken::LBK; $this->curr_pos += 1; return;
             case ')': $this->curr_tok = CalcToken::RBK; $this->curr_pos += 1; return;
+            case ',': $this->curr_tok = CalcToken::COMMA; $this->curr_pos += 1; return;
         }
 
-        // (\.[0-9]+) | ([0-9]+(\.[0-9]*)?)
-        if ($this->IsNum($c) || ($c == '.' && $this->curr_pos < $this->code_end - 1 && $this->IsNum($this->code[$this->curr_pos + 1]))) {
+        if ($c == '.') {
+            if ($this->curr_pos == $this->code_end - 1 || !$this->IsNum($this->code[$this->curr_pos + 1])) {
+                $this->curr_tok = CalcToken::DOT;
+                $this->curr_pos += 1;
+                return;
+            }
+        }
+
+        // (\.[0-9]+) | ([0-9]+(\.[0-9]+)?)
+        if ($this->IsNum($c)) {
             $num_begin = $this->curr_pos;
             $num_length = 1;
 
@@ -73,7 +82,7 @@ class CalcLexer
                     if ($has_dot)
                         break;
                 
-                    if ($c == '.')
+                    if ($c == '.' && $this->curr_pos != $this->code_end - 1 && $this->IsNum($this->code[$this->curr_pos + 1]))
                         $has_dot = true;
                     else
                         break;
@@ -88,7 +97,7 @@ class CalcLexer
             return;
         }
 
-        $this->curr_tok = CalcToken::ERR;
+        throw new Exception("unknow token '$c'");
     }
 
     private function IsNum($c) {
@@ -120,7 +129,37 @@ class CalcParser
     }
 
     public function Run() {
-        return $this->ParseExp(0);
+        $seglist = array();
+
+        while (true) {
+            $seg = $this->ParseSeg();
+
+            $seglist[] = $seg;
+
+            if ($this->CurrentToken() == CalcToken::EOF)
+                break;
+        }
+
+        return $seglist;
+    }
+
+    public function ParseSeg() {
+        $explist = array();
+
+        while (true) {
+            $exp = $this->ParseExp(0);
+
+            $explist[] = $exp;
+
+            if ($this->CurrentToken() != CalcToken::COMMA)
+                break;
+        }
+
+        if ($this->CurrentToken() != CalcToken::DOT) {
+            $this->Error("missing '.' at the end of segment");
+        }
+
+        return $explist;
     }
 
     public function ParseExp($pri) {
@@ -136,7 +175,7 @@ class CalcParser
             $ast = $this->ParseExp(0);
 
             if ($this->CurrentToken() != CalcToken::RBK) {
-                $this->Error("Missing ')'");
+                $this->Error("missing ')'");
             }
 
             $this->NextToken();
@@ -178,9 +217,10 @@ class CalcParser
 }
 
 class CalcToken {
-    const ERR = 0;
     const EOF = 1;
-    const NUM = 2;
+    const DOT = 2;
+    const COMMA = 3;
+    const NUM = 4;
 
     const LBK = 10;
     const RBK = 11;
@@ -239,17 +279,24 @@ if (isset($argv) && isset($argv[0])) {
         if ($line == 'exit')
             break;
 
-        $start_time = microtime(true);
+        try {
+            $start_time = microtime(true);
 
-        $parser = new CalcParser($line);
+            $parser = new CalcParser($line);
 
-        $ast = $parser->Run();
+            $explist = $parser->ParseSeg();
 
-        $result = $ast->Exec();
+            foreach ($explist as $exp) {
+                $result = $exp->Exec();
+            }
 
-        $end_time = microtime(true);
+            $end_time = microtime(true);
 
-        printf("result: %f (%f sec)\n", $result, ($end_time - $start_time));
+            printf("result: %f (%f sec)\n", $result, ($end_time - $start_time));
+
+        } catch(Exception $ex) {
+            printf("error: %s\n", $ex->getMessage());            
+        }
     }
 }
 
