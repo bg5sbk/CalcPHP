@@ -4,24 +4,9 @@ CalcPHP is a math expression calculator write in PHP.
 
 I write it just for fun and for programming language parsing and compiling study purpose.
 
-It provide a simple "calculator language" like "1 + 1" or "1 * (2 + 3)".
+You can use it as a command line tool like :
 
-And will be support variable, control flow, user function, extend function.
-
-You can use it by include "CalcPHP.php" in your app and execute match expression in your app by :
-
-    $parser = new CalcParser($code);
-
-    $ast = $parser->Run();
-
-    $result = $ast->Exec();
-
-or run it in command line by :
-
-    php CalcPHP.php
-
-The command line example :
-
+    # php CalcPHP.php
     CalcPHP command line interface V1.0
     > 1.
     result: 1.000000 (0.000102 sec)
@@ -33,9 +18,52 @@ The command line example :
     result: 2.500000 (0.000357 sec)
     > (1 + 2) * (3 / 4).
     result: 2.250000 (0.000329 sec)
+    > a = 1, b = 2, c = 3, (a + b) / c.
+    result: 1.000000 (0.000782 sec)
     > exit
- 
 
-=== Change Log ===
+And you can embed the "CalcPHP Language" in your app by include "CalcPHP.php", and use it like:
 
-2011-08-13  Project init. Only support +, -, *, / operation for numerics in this version.
+    //create global state
+    $state = new CalcState();
+
+    //create a parser
+    $parser = new CalcParser($code);
+
+    //parse one statement
+    $explist = $parser->ParseSta();
+
+    //get the last expression's result
+    foreach ($explist as $exp) {
+        $result = $exp->Exec($state);
+    }
+
+
+=== Syntax ===
+
+The CalcPHP command line interface execute "CalcPHP Language" statement by read line.
+
+The statement end with '.' and include one or more expression, expressions split by ','.
+
+The statement's value equals the last expression's value in this statement.
+
+Example 1:
+
+    CalcPHP command line interface V1.0
+    > 1.
+    result: 1.000000 (0.000142 sec)
+    > 1, 2.
+    result: 2.000000 (0.000138 sec)
+
+A variable named in "[_a-zA-Z][_0-9a-zA-Z]*" format and default value is 0.
+
+Example 2:
+
+    CalcPHP command line interface V1.0
+    > a.
+    result: 0.000000 (0.000164 sec)
+    > a = 1.
+    result: 1.000000 (0.000181 sec)
+    > b = a + 1.
+    result: 2.000000 (0.000216 sec)
+

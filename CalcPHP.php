@@ -30,7 +30,7 @@ class CalcLexer
             return;
         }
 
-        // ignore white space
+        // Ignore White Space
         while (true) {
             $c = $this->code[$this->curr_pos];
 
@@ -46,25 +46,44 @@ class CalcLexer
         }
 
         switch ($c) {
-            case '+': $this->curr_tok = CalcToken::ADD; $this->curr_pos += 1; return;
-            case '-': $this->curr_tok = CalcToken::SUB; $this->curr_pos += 1; return;
-            case '*': $this->curr_tok = CalcToken::MUL; $this->curr_pos += 1; return;
-            case '/': $this->curr_tok = CalcToken::DIV; $this->curr_pos += 1; return;
-            case '(': $this->curr_tok = CalcToken::LBK; $this->curr_pos += 1; return;
-            case ')': $this->curr_tok = CalcToken::RBK; $this->curr_pos += 1; return;
-            case ',': $this->curr_tok = CalcToken::COMMA; $this->curr_pos += 1; return;
+            case '.' : $this->curr_tok = CalcToken::DOT;    $this->curr_pos += 1; return;
+            case '+' : $this->curr_tok = CalcToken::ADD;    $this->curr_pos += 1; return;
+            case '-' : $this->curr_tok = CalcToken::SUB;    $this->curr_pos += 1; return;
+            case '*' : $this->curr_tok = CalcToken::MUL;    $this->curr_pos += 1; return;
+            case '/' : $this->curr_tok = CalcToken::DIV;    $this->curr_pos += 1; return;
+            case '(' : $this->curr_tok = CalcToken::LBK;    $this->curr_pos += 1; return;
+            case ')' : $this->curr_tok = CalcToken::RBK;    $this->curr_pos += 1; return;
+            case ',' : $this->curr_tok = CalcToken::COMMA;  $this->curr_pos += 1; return;
+            case '=' : $this->curr_tok = CalcToken::ASSIGN; $this->curr_pos += 1; return;
         }
 
-        if ($c == '.') {
-            if ($this->curr_pos == $this->code_end - 1 || !$this->IsNum($this->code[$this->curr_pos + 1])) {
-                $this->curr_tok = CalcToken::DOT;
+        // Identifier
+        if ($c == '_' || ctype_alpha($c)) {
+            $id_begin = $this->curr_pos;
+            $id_length = 1;
+
+            while (true) {
                 $this->curr_pos += 1;
-                return;
+
+                if ($this->curr_pos == $this->code_end)
+                    break;
+
+                $c = $this->code[$this->curr_pos];
+
+                if ($c != '_' && !ctype_alpha($c) && !ctype_digit($c))
+                    break;
+
+                $id_length += 1;
             }
+
+            $this->curr_val = substr($this->code, $id_begin, $id_length);
+            $this->curr_tok = CalcToken::ID;
+
+            return;
         }
 
-        // (\.[0-9]+) | ([0-9]+(\.[0-9]+)?)
-        if ($this->IsNum($c)) {
+        // Numeric
+        if (ctype_digit($c)) {
             $num_begin = $this->curr_pos;
             $num_length = 1;
 
@@ -78,11 +97,11 @@ class CalcLexer
 
                 $c = $this->code[$this->curr_pos];
 
-                if (!$this->IsNum($c)) {
+                if (!ctype_digit($c)) {
                     if ($has_dot)
                         break;
                 
-                    if ($c == '.' && $this->curr_pos != $this->code_end - 1 && $this->IsNum($this->code[$this->curr_pos + 1]))
+                    if ($c == '.' && $this->curr_pos != $this->code_end - 1 && ctype_digit($this->code[$this->curr_pos + 1]))
                         $has_dot = true;
                     else
                         break;
@@ -98,13 +117,6 @@ class CalcLexer
         }
 
         throw new Exception("unknow token '$c'");
-    }
-
-    private function IsNum($c) {
-        return $c == '0' || $c == '1' || $c == '2' || 
-        $c == '3' || $c == '4' || $c == '5' || 
-        $c == '6' || $c == '7' || $c == '8' ||
-        $c == '9';
     }
 }
 
@@ -132,7 +144,7 @@ class CalcParser
         $seglist = array();
 
         while (true) {
-            $seg = $this->ParseSeg();
+            $seg = $this->ParseSta();
 
             $seglist[] = $seg;
 
@@ -143,7 +155,7 @@ class CalcParser
         return $seglist;
     }
 
-    public function ParseSeg() {
+    public function ParseSta() {
         $explist = array();
 
         while (true) {
@@ -187,18 +199,24 @@ class CalcParser
             $this->NextToken();
 
             return $ast;
+        } else if ($this->CurrentToken() == CalcToken::ID) {
+            $ast = new CalcIdAST($this->CurrentValue());
+
+            $this->NextToken();
+
+            return $ast;
         }
     }
 
     public function ParseRightSide($pri, $lh) {
-        while(true) {
-            if (!$this->IsBinOp($this->CurrentToken())) {
+        while (true) {
+            if (!CalcToken::IsBinOp($this->CurrentToken())) {
                 return $lh;
             }
 
             $pri2 = $this->CurrentToken();
 
-            if ($pri >= $pri2)
+            if ($pri >= $pri2 && $pri2 != CalcToken::ASSIGN)
                 return $lh;
 
             $rh = $this->ParseExp($pri2);
@@ -207,28 +225,83 @@ class CalcParser
         }
     }
 
-    private function IsBinOp($token) {
-        return CalcToken::ADD <= $token && $token <= CalcToken::DIV;
-    }
-
     private function Error($msg) {
         throw new Exception($msg);
     }
 }
 
 class CalcToken {
-    const EOF = 1;
-    const DOT = 2;
-    const COMMA = 3;
-    const NUM = 4;
+    const EOF   = 1;    // End Of File
+    const NUM   = 2;    // [0-9]+(\.[0-9]+)?
+    const ID    = 3;    // [_a-zA-Z][_0-9a-zA-Z]*
+    const DOT   = 4;    // .
+    const COMMA = 5;    // ,
 
-    const LBK = 10;
-    const RBK = 11;
+    const LBK = 10;     // (
+    const RBK = 11;     // )
 
-    const ADD = 20;
-    const SUB = 21;
-    const MUL = 22;
-    const DIV = 23;
+                        // Binary Operators
+    const ASSIGN = 20;  // =
+    const ADD = 21;     // +
+    const SUB = 22;     // -
+    const MUL = 23;     // *
+    const DIV = 24;     // /
+
+    public static function IsBinOp($token) {
+        return (self::ASSIGN <= $token) && ($token <= self::DIV);
+    }
+}
+
+class CalcState {
+    private $symble_table = array();
+
+    public function Lookup($name) {
+        if (isset($this->symble_table[$name])) {
+            return $this->symble_table[$name];
+        } else {
+            $symble = new CalcSymble($name);
+
+            $this->symble_table[$name] = $symble;
+
+            return $symble;
+        }
+    }
+}
+
+class CalcSymble {
+    public function __construct($name) {
+        $this->name = $name;
+        $this->value = 0;
+    }
+
+    private $name;
+    private $value;
+
+    public function SetValue($value) {
+        $this->value = $value;
+    }
+
+    public function GetValue() {
+        return $this->value;
+    }
+}
+
+class CalcIdAST {
+    public function __construct($name) {
+        $this->name = $name;
+    }
+
+    private $name;
+
+    public function SetValue($state, $value) {
+        $symble = $state->Lookup($this->name);
+        $symble->SetValue($value);
+    }
+
+    public function Exec($state) {
+        $symble = $state->Lookup($this->name);
+        return $symble->GetValue();
+    }
 }
 
 class CalcNumAST {
@@ -238,7 +311,7 @@ class CalcNumAST {
 
     private $value;
 
-    public function Exec() {
+    public function Exec($state) {
         return $this->value;
     }
 }
@@ -254,15 +327,21 @@ class CalcBinOpAST {
     private $lh;
     private $rh;
 
-    public function Exec() {
-        $lv = $this->lh->Exec();
-        $rv = $this->rh->Exec();
+    public function Exec($state) {
+        if ($this->op == CalcToken::ASSIGN) {
+            $rv = $this->rh->Exec($state);
+            $this->lh->SetValue($state, $rv);
+            return $rv;
+        } else {
+            $lv = $this->lh->Exec($state);
+            $rv = $this->rh->Exec($state);
 
-        switch ($this->op) {
-            case CalcToken::ADD : return $lv + $rv;
-            case CalcToken::SUB : return $lv - $rv;
-            case CalcToken::MUL : return $lv * $rv;
-            case CalcToken::DIV : return $lv / $rv;
+            switch ($this->op) {
+                case CalcToken::ADD : return $lv + $rv;
+                case CalcToken::SUB : return $lv - $rv;
+                case CalcToken::MUL : return $lv * $rv;
+                case CalcToken::DIV : return $lv / $rv;
+            }
         }
     }
 }
@@ -270,6 +349,8 @@ class CalcBinOpAST {
 
 if (isset($argv) && isset($argv[0])) {
     echo "CalcPHP command line interface V1.0\n";
+
+    $state = new CalcState();
 
     while (true) {
         $line = readline("> ");
@@ -284,10 +365,10 @@ if (isset($argv) && isset($argv[0])) {
 
             $parser = new CalcParser($line);
 
-            $explist = $parser->ParseSeg();
+            $explist = $parser->ParseSta();
 
             foreach ($explist as $exp) {
-                $result = $exp->Exec();
+                $result = $exp->Exec($state);
             }
 
             $end_time = microtime(true);
