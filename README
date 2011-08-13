@@ -1,0 +1,26 @@
+=== Introduction ===
+
+CalcPHP is a math expression calculator write in PHP. 
+
+I write it just for fun and for programming language parsing and compiling study purpose.
+
+It provide a simple "calculator language" like "1 + 1" or "1 * (2 + 3)".
+
+And will be support variable, control flow, user function, extend function.
+
+You can use it by include "CalcPHP.php" in your app and execute match expression in your app by :
+
+   $parser = new CalcParser($code);
+
+   $ast = $parser->Run();
+
+   $result = $ast->Exec();
+
+or run it in command line by :
+
+   php CalcPHP.php
+
+
+=== Change Log ===
+
+2011-08-13  Project init. Only support +, -, *, / operation for numerics in this version.
