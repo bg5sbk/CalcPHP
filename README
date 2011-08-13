@@ -20,6 +20,21 @@ or run it in command line by :
 
    php CalcPHP.php
 
+The command line example :
+
+    CalcPHP command line interface V1.0
+    > 1
+    result: 1.000000 (0.000102 sec)
+    > 1 + 2
+    result: 3.000000 (0.000133 sec)
+    > 1 + 2 * 3
+    result: 7.000000 (0.000426 sec)
+    > 1 + 2 * 3 / 4
+    result: 2.500000 (0.000357 sec)
+    > (1 + 2) * (3 / 4)
+    result: 2.250000 (0.000329 sec)
+    > exit
+ 
 
 === Change Log ===
 
