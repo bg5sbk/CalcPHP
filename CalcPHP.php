@@ -122,10 +122,12 @@ class CalcLexer
 
 class CalcParser
 {
-    public function __construct($code) {
+    public function __construct($code, $state) {
+        $this->state = $state;
         $this->lexer = new CalcLexer($code);
     }
 
+    private $state;
     private $lexer;
 
     private function NextToken() {
@@ -140,19 +142,19 @@ class CalcParser
         return $this->lexer->CurrentValue();
     }
 
-    public function Run() {
+    public function Parse() {
         $seglist = array();
 
         while (true) {
-            $seg = $this->ParseSta();
+            $explist = $this->ParseSta();
 
-            $seglist[] = $seg;
+            $stalist[] = $explist;
 
             if ($this->CurrentToken() == CalcToken::EOF)
                 break;
         }
 
-        return $seglist;
+        return new CalcDoc($this->state, $stalist);
     }
 
     public function ParseSta() {
@@ -170,6 +172,8 @@ class CalcParser
         if ($this->CurrentToken() != CalcToken::DOT) {
             $this->Error("missing '.' at the end of segment");
         }
+
+        $this->NextToken();
 
         return $explist;
     }
@@ -260,9 +264,7 @@ class CalcState {
             return $this->symble_table[$name];
         } else {
             $symble = new CalcSymble($name);
-
             $this->symble_table[$name] = $symble;
-
             return $symble;
         }
     }
@@ -283,6 +285,25 @@ class CalcSymble {
 
     public function GetValue() {
         return $this->value;
+    }
+}
+
+class CalcDoc {
+    public function __construct($state, $stalist) {
+        $this->state = $state;
+        $this->stalist = $stalist;
+    }
+
+    private $state;
+    private $stalist;
+
+    public function Exec() {
+        foreach ($this->stalist as $explist) {
+            foreach ($explist as $exp) {
+                $result = $exp->Exec($this->state);
+            }
+        }
+        return $result;
     }
 }
 
@@ -363,18 +384,15 @@ if (isset($argv) && isset($argv[0])) {
         try {
             $start_time = microtime(true);
 
-            $parser = new CalcParser($line);
+            $parser = new CalcParser($line, $state);
 
-            $explist = $parser->ParseSta();
+            $doc = $parser->Parse();
 
-            foreach ($explist as $exp) {
-                $result = $exp->Exec($state);
-            }
+            $result = $doc->Exec();
 
             $end_time = microtime(true);
 
             printf("result: %f (%f sec)\n", $result, ($end_time - $start_time));
-
         } catch(Exception $ex) {
             printf("error: %s\n", $ex->getMessage());            
         }

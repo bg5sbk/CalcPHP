@@ -2,11 +2,13 @@
 
 CalcPHP is a math expression calculator write in PHP. 
 
-I write it just for fun and for programming language parsing and compiling study purpose.
+I write it just for fun and programming language implement study purpose.
+
+It define and implement a small language to do calculation works.
 
 You can use it as a command line tool like :
 
-    # php CalcPHP.php
+    $ php CalcPHP.php
     CalcPHP command line interface V1.0
     > 1.
     result: 1.000000 (0.000102 sec)
@@ -22,21 +24,19 @@ You can use it as a command line tool like :
     result: 1.000000 (0.000782 sec)
     > exit
 
-And you can embed the "CalcPHP Language" in your app by include "CalcPHP.php", and use it like:
+And you can embed CalcPHP in your app by include "CalcPHP.php", and use it like:
 
     //create global state
     $state = new CalcState();
 
     //create a parser
-    $parser = new CalcParser($code);
+    $parser = new CalcParser($code, $state);
 
-    //parse one statement
-    $explist = $parser->ParseSta();
+    //parse code as AST
+    $doc = $parser->Parse();
 
-    //get the last expression's result
-    foreach ($explist as $exp) {
-        $result = $exp->Exec($state);
-    }
+    //execute AST and get result
+    $result = $doc->Exec();
 
 
 === Syntax ===
