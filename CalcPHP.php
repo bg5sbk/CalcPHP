@@ -48,13 +48,22 @@ class CalcLexer
         switch ($c) {
             case '.' : $this->curr_tok = CalcToken::DOT;    $this->curr_pos += 1; return;
             case '+' : $this->curr_tok = CalcToken::ADD;    $this->curr_pos += 1; return;
-            case '-' : $this->curr_tok = CalcToken::SUB;    $this->curr_pos += 1; return;
             case '*' : $this->curr_tok = CalcToken::MUL;    $this->curr_pos += 1; return;
             case '/' : $this->curr_tok = CalcToken::DIV;    $this->curr_pos += 1; return;
             case '(' : $this->curr_tok = CalcToken::LBK;    $this->curr_pos += 1; return;
             case ')' : $this->curr_tok = CalcToken::RBK;    $this->curr_pos += 1; return;
             case ',' : $this->curr_tok = CalcToken::COMMA;  $this->curr_pos += 1; return;
             case '=' : $this->curr_tok = CalcToken::ASSIGN; $this->curr_pos += 1; return;
+            case '-' :
+                if ($this->curr_pos < $this->code_end - 2 && 
+                    $this->code[$this->curr_pos + 1] == '>') {
+                    $this->curr_tok = CalcToken::ARROW;
+                    $this->curr_pos += 2;
+                } else {
+                    $this->curr_tok = CalcToken::SUB;
+                    $this->curr_pos += 1; 
+                }
+                return;
         }
 
         // Identifier
@@ -77,8 +86,18 @@ class CalcLexer
             }
 
             $this->curr_val = substr($this->code, $id_begin, $id_length);
-            $this->curr_tok = CalcToken::ID;
 
+            switch ($this->curr_val) {
+                case 'fun' :
+                    $this->curr_tok = CalcToken::FUN;
+                    break;
+                case 'end' :
+                    $this->curr_tok = CalcToken::END;
+                    break;
+                default:
+                    $this->curr_tok = CalcToken::ID;
+            }
+            
             return;
         }
 
@@ -157,7 +176,19 @@ class CalcParser
         return new CalcDoc($this->state, $stalist);
     }
 
-    public function ParseSta() {
+    private function ParseSta() {
+        $explist = $this->ParseExpList();
+        
+        if ($this->CurrentToken() != CalcToken::DOT) {
+            $this->Error("missing '.' at the end of statement");
+        }
+
+        $this->NextToken();
+
+        return $explist;
+    }
+
+    private function ParseExpList() {
         $explist = array();
 
         while (true) {
@@ -169,24 +200,70 @@ class CalcParser
                 break;
         }
 
-        if ($this->CurrentToken() != CalcToken::DOT) {
-            $this->Error("missing '.' at the end of segment");
-        }
-
-        $this->NextToken();
-
         return $explist;
     }
 
-    public function ParseExp($pri) {
-        $lh = $this->ParseUnary();
-
-        return $this->ParseRightSide($pri, $lh);
-    }
-
-    public function ParseUnary() {
+    private function ParseExp($pri) {
         $this->NextToken();
 
+        if ($this->CurrentToken() == CalcToken::FUN) {
+            $this->NextToken();
+            
+            return $this->ParseFun();
+        } else {
+            $lh = $this->ParseUnary();
+
+            return $this->ParseRightSide($pri, $lh);
+        }
+    }
+
+    private function ParseFun() {
+        if ($this->CurrentToken() != CalcToken::LBK) {
+            $this->Error("mission '('");
+        }
+        
+        $this->NextToken();
+        
+        $arglist = array();
+        
+        while (true) {
+            if ($this->CurrentToken() != CalcToken::ID)
+                break;
+            
+            $arglist[] = $this->CurrentValue();
+            
+            $this->NextToken();
+            
+            if ($this->CurrentToken() != CalcToken::COMMA)
+                break;
+            
+            $this->NextToken();
+        }
+        
+        if ($this->CurrentToken() != CalcToken::RBK) {
+            $this->Error("missing ')'");
+        }
+        
+        $this->NextToken();
+        
+        if ($this->CurrentToken() != CalcToken::ARROW) {
+            $this->Error("missing '->'");
+        }
+        
+        $explist = $this->ParseExpList();
+        
+        if ($this->CurrentToken() != CalcToken::END) {
+            $this->Error("mission 'end'");
+        }
+        
+        $this->NextToken();
+        
+        $fun = new CalcFunAST($arglist, $explist);
+        
+        return $fun;
+    }
+
+    private function ParseUnary() {
         if ($this->CurrentToken() == CalcToken::LBK) {
             $ast = $this->ParseExp(0);
 
@@ -204,15 +281,43 @@ class CalcParser
 
             return $ast;
         } else if ($this->CurrentToken() == CalcToken::ID) {
-            $ast = new CalcIdAST($this->CurrentValue());
+            $name = $this->CurrentValue();
 
             $this->NextToken();
 
-            return $ast;
+            if ($this->CurrentToken() == CalcToken::LBK) {
+                $arglist = array();
+
+                while (true) {
+                    $arg = $this->ParseExp(0);
+
+                    if ($arg)
+                        $arglist[] = $arg;
+
+                    if ($this->CurrentToken() != CalcToken::COMMA)
+                        break;
+                }
+
+                if ($this->CurrentToken() != CalcToken::RBK) {
+                    $this->Error("mission ')'");
+                }
+
+                $this->NextToken();
+
+                $ast = new CalcCallAST($name, $arglist);
+
+                return $ast;    
+            } else {
+                $ast = new CalcVarAST($name);
+
+                return $ast;
+            }
         }
+
+        return null;
     }
 
-    public function ParseRightSide($pri, $lh) {
+    private function ParseRightSide($pri, $lh) {
         while (true) {
             if (!CalcToken::IsBinOp($this->CurrentToken())) {
                 return $lh;
@@ -225,7 +330,7 @@ class CalcParser
 
             $rh = $this->ParseExp($pri2);
         
-            $lh = new CalcBinOpAST($pri2, $lh, $rh);
+            $lh = new CalcBinAST($pri2, $lh, $rh);
         }
     }
 
@@ -235,14 +340,16 @@ class CalcParser
 }
 
 class CalcToken {
-    const EOF   = 1;    // End Of File
-    const NUM   = 2;    // [0-9]+(\.[0-9]+)?
-    const ID    = 3;    // [_a-zA-Z][_0-9a-zA-Z]*
-    const DOT   = 4;    // .
-    const COMMA = 5;    // ,
-
-    const LBK = 10;     // (
-    const RBK = 11;     // )
+    const EOF    = 1;   // End Of File
+    const NUM    = 2;   // [0-9]+(\.[0-9]+)?
+    const ID     = 3;   // [_a-zA-Z][_0-9a-zA-Z]*
+    const DOT    = 4;   // .
+    const COMMA  = 5;   // ,
+    const LBK    = 6;   // (
+    const RBK    = 7;   // )    
+    const FUN    = 10;  // fun
+    const ARROW  = 11;  // ->
+    const END    = 12;  // end
 
                         // Binary Operators
     const ASSIGN = 20;  // =
@@ -257,34 +364,41 @@ class CalcToken {
 }
 
 class CalcState {
-    private $symble_table = array();
+    public function __construct($parent = null) {
+        $this->parent = $parent;
+    }
 
-    public function Lookup($name) {
-        if (isset($this->symble_table[$name])) {
-            return $this->symble_table[$name];
-        } else {
-            $symble = new CalcSymble($name);
-            $this->symble_table[$name] = $symble;
-            return $symble;
+    private $parent;
+    private $var_table = array();
+       
+    public function SetVar($id, $val) {
+        $this->var_table[$id] = $val;
+    }
+    
+    public function GetVar($id) {
+        if (isset($this->var_table[$id]))
+            return $this->var_table[$id];
+
+        if ($this->parent) {
+            $var = $this->parent->GetVar2($id);
+
+            if ($var != null)
+                return $var;
         }
-    }
-}
 
-class CalcSymble {
-    public function __construct($name) {
-        $this->name = $name;
-        $this->value = 0;
+        $this->var_table[$id] = 0;
+
+        return 0;
     }
 
-    private $name;
-    private $value;
+    private function GetVar2($id) {
+        if (isset($this->var_table[$id]))
+            return $this->var_table[$id];
 
-    public function SetValue($value) {
-        $this->value = $value;
-    }
+        if ($this->parent)
+            return $this->parent->GetVar2($id);
 
-    public function GetValue() {
-        return $this->value;
+        return null; 
     }
 }
 
@@ -307,21 +421,19 @@ class CalcDoc {
     }
 }
 
-class CalcIdAST {
+class CalcVarAST {
     public function __construct($name) {
         $this->name = $name;
     }
 
     private $name;
 
-    public function SetValue($state, $value) {
-        $symble = $state->Lookup($this->name);
-        $symble->SetValue($value);
+    public function SetValue($state, $val) {
+        $state->SetVar($this->name, $val);
     }
 
     public function Exec($state) {
-        $symble = $state->Lookup($this->name);
-        return $symble->GetValue();
+        return $state->GetVar($this->name);
     }
 }
 
@@ -337,7 +449,7 @@ class CalcNumAST {
     }
 }
 
-class CalcBinOpAST {
+class CalcBinAST {
     public function __construct($op, $lh, $rh) {
         $this->op = $op;
         $this->lh = $lh;
@@ -364,6 +476,57 @@ class CalcBinOpAST {
                 case CalcToken::DIV : return $lv / $rv;
             }
         }
+    }
+}
+
+class CalcFunAST {
+    public function __construct($arglist, $explist) {
+        $this->arglist = $arglist;
+        $this->explist = $explist;
+    }
+
+    private $id;
+    private $arglist;
+    private $explist;
+
+    public function Exec($state) {
+       return $this;
+    }
+
+    public function Call($state, $arglist) {
+        $call_state = new CalcState($state);
+
+        $arg_count = count($this->arglist);
+
+        for ($i = 0; $i < $arg_count; $i ++) {
+            $arg = $arglist[$i];
+            $arg_id = $this->arglist[$i];
+            $arg_val = $arg->Exec($state);
+
+            $call_state->SetVar($arg_id, $arg_val);
+        }
+
+        foreach ($this->explist as $exp) {
+            $result = $exp->Exec($call_state);
+        }
+
+        return $result;
+    }
+}
+
+class CalcCallAST {
+    public function __construct($name, $arglist) {
+        $this->name = $name;
+        $this->arglist = $arglist;
+    }
+
+    private $name;
+    private $arglist;
+
+    public function Exec($state) {
+        $fun = $state->GetVar($this->name);
+
+        return $fun->Call($state, $this->arglist);
     }
 }
 
